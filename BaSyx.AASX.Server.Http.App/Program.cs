@@ -17,10 +17,10 @@ using BaSyx.Models.Connectivity;
 using BaSyx.Models.Core.AssetAdministrationShell.Generics;
 using BaSyx.Models.Export;
 using BaSyx.Registry.Client.Http;
-using BaSyx.Utils.Logging;
 using BaSyx.Utils.Settings.Types;
 using CommandLine;
 using NLog;
+using NLog.Web;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -95,13 +95,18 @@ namespace BaSyx.AASX.Server.Http.App
                                throw new FileNotFoundException(o.InputPath);
                        }
                        else
-                           throw new ArgumentNullException(o.InputPath);
+                       {
+                           if (File.Exists(args[0]))
+                               inputFiles = new string[] { args[0] };
+                           else if (Directory.Exists(args[0]))
+                               inputFiles = Directory.GetFiles(args[0]);
+                       }
 
                    });
 
             if (args.Contains("--help") || args.Contains("--version"))
                 return;
-
+           
             if (inputFiles == null || inputFiles.Length == 0)
             {
                 logger.Error("No AASX-File(s) found --> Application is shutting down...");
@@ -111,6 +116,7 @@ namespace BaSyx.AASX.Server.Http.App
             {
                 registryHttpClient = new RegistryHttpClient();
                 repositoryServer = new AssetAdministrationShellRepositoryHttpServer(serverSettings);
+                repositoryServer.WebHostBuilder.UseNLog();
                 repositoryService = new AssetAdministrationShellRepositoryServiceProvider();
                 endpoints = serverSettings.ServerConfig.Hosting.Urls.ConvertAll(c =>
                 {
@@ -139,7 +145,7 @@ namespace BaSyx.AASX.Server.Http.App
                             var result = registryHttpClient
                             .DeleteAssetAdministrationShellRegistration(shellProvider.ServiceDescriptor.Identification.Id);
 
-                            result.LogResult(logger, LogLevel.Info);
+                            logger.Info($"Success: {result.Success} | Messages: {result.Messages.ToString()}");
                         }
                     }
                 };
@@ -200,7 +206,7 @@ namespace BaSyx.AASX.Server.Http.App
                     var result = registryHttpClient.CreateOrUpdateAssetAdministrationShellRegistration(
                     shell.Identification.Id, aasServiceProvider.ServiceDescriptor);
 
-                    result.LogResult(logger, LogLevel.Info);
+                    logger.Info($"Success: {result.Success} | Messages: {result.Messages.ToString()}");
                 }
             }
 
