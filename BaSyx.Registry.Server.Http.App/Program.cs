@@ -18,6 +18,9 @@ using System.Linq;
 using System.Collections.Generic;
 using BaSyx.Common.UI;
 using BaSyx.Common.UI.Swagger;
+using NLog.Web;
+using Microsoft.AspNetCore.Hosting;
+using System.Security.Cryptography.X509Certificates;
 
 namespace BaSyx.Registry.Server.Http.App
 {
@@ -63,34 +66,52 @@ namespace BaSyx.Registry.Server.Http.App
                 return;
 
             //Instantiate blank Registry-Http-Server with previously loaded server settings
-            RegistryHttpServer registryServer = new RegistryHttpServer(serverSettings);
+            RegistryHttpServer server = new RegistryHttpServer(serverSettings);
+
+            //Check if ServerCertificate is present
+            if(!string.IsNullOrEmpty(serverSettings.ServerConfig.Security.ServerCertificatePath))
+            {
+                server.WebHostBuilder.ConfigureKestrel(serverOptions =>
+                {
+                    serverOptions.ConfigureHttpsDefaults(listenOptions =>
+                    {
+                        X509Certificate2 certificate = new X509Certificate2(
+                            serverSettings.ServerConfig.Security.ServerCertificatePath,
+                            serverSettings.ServerConfig.Security.ServerCertificatePassword);
+                        listenOptions.ServerCertificate = certificate;
+                    });
+                });
+            }
+
+            //Configure the entire application to use your own logger library (here: Nlog)
+            server.WebHostBuilder.UseNLog();
 
             //Instantiate implementation backend for the Registry
             FileBasedRegistry fileBasedRegistry = new FileBasedRegistry();                       
 
             //Assign implemenation backend to blank Registry-Http-Server
-            registryServer.SetRegistryProvider(fileBasedRegistry);
+            server.SetRegistryProvider(fileBasedRegistry);
 
             //Start mDNS Discovery ability when the server successfully booted up
-            registryServer.ApplicationStarted = () =>
+            server.ApplicationStarted = () =>
             {
                 fileBasedRegistry.StartDiscovery();
             };
 
             //Start mDNS Discovery when the server is shutting down
-            registryServer.ApplicationStopping = () =>
+            server.ApplicationStopping = () =>
             {
                 fileBasedRegistry.StopDiscovery();
             };
 
             //Add BaSyx Web UI
-            registryServer.AddBaSyxUI(PageNames.AssetAdministrationShellRegistryServer);
+            server.AddBaSyxUI(PageNames.AssetAdministrationShellRegistryServer);
 
             //Add Swagger Documentation and UI
-            registryServer.AddSwagger(Interface.AssetAdministrationShellRegistry);
+            server.AddSwagger(Interface.AssetAdministrationShellRegistry);
 
             //Run the server
-            registryServer.Run();
+            server.Run();
         }
     }
 }
